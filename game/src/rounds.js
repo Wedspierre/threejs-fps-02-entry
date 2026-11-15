@@ -12,6 +12,9 @@ export const KILL_REWARD = 300;
 export const PLANT_REWARD = 300;
 export const WIN_REWARD = 3250;
 export const LOSS_REWARD = 1900;
+// Team plans, picked once per match: every attacker hits A, every attacker hits B,
+// or the squad splits two and two. The HUD shows the plan; the bots follow it.
+export const PLANS = ['A', 'B', 'SPLIT'];
 
 export function createMatch() {
   return {
@@ -23,6 +26,7 @@ export function createMatch() {
     money: 800,
     kills: 0,
     deaths: 0,
+    plan: 'SPLIT',
     bomb: {
       state: 'carried', // carried | dropped | planted | gone
       carrier: 'player', // 'player' or a bot; null only while dropped
@@ -30,8 +34,6 @@ export function createMatch() {
       z: 0,
       site: null, // 'A' | 'B'
       timer: BOMB_SECONDS,
-      plantProgress: 0,
-      defuseProgress: 0,
     },
     roundWinner: null,
     roundReason: '',
@@ -49,6 +51,7 @@ export function startMatch(match) {
   match.money = 800;
   match.kills = 0;
   match.deaths = 0;
+  match.plan = PLANS[Math.floor(Math.random() * PLANS.length)];
   match.matchWinner = null;
   match.roundWinner = null;
   match.roundReason = '';
@@ -56,8 +59,6 @@ export function startMatch(match) {
   match.bomb.carrier = 'player';
   match.bomb.site = null;
   match.bomb.timer = BOMB_SECONDS;
-  match.bomb.plantProgress = 0;
-  match.bomb.defuseProgress = 0;
 }
 
 export function startRound(match, round) {
@@ -70,8 +71,6 @@ export function startRound(match, round) {
   match.bomb.carrier = 'player';
   match.bomb.site = null;
   match.bomb.timer = BOMB_SECONDS;
-  match.bomb.plantProgress = 0;
-  match.bomb.defuseProgress = 0;
 }
 
 export function beginLive(match) {

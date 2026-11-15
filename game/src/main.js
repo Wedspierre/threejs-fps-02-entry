@@ -1,12 +1,18 @@
-// Boot and the one loop: a fixed 60 Hz simulation feeding a render at the display's rate.
-// ?shot=start|mid|plant|end with &seed=N sets up a deterministic frame for a capture,
-// renders it twice, then freezes it and sets window.__shotReady.
+// EMBERLINE — a complete round-based tactical FPS: 5v5 at Kestrel Foundry, two
+// bomb sites, a buy menu, smoke and flash grenades, and a team plan the squad
+// follows. First-person mouse look and WASD movement, weapons that fire, reload
+// and run dry, headshot hitboxes, bots that route, hold, plant and defuse, rounds
+// that end and start again, and a HUD with health, ammo, money, timer and score.
+// ?shot=cover|plant|buy|push with &seed=N sets up a deterministic frame for a
+// capture, renders it twice, then freezes it and sets window.__shotReady.
+// Boot and the one loop: a fixed 60 Hz simulation feeding a render at the
+// display's rate.
 import * as THREE from 'three';
 import { PALETTE } from './palette.js';
 import { createWorld, SITES, ATTACKER_SPAWNS, DEFENDER_SPAWNS } from './world.js';
 import { createInput } from './input.js';
 import { createPlayer } from './player.js';
-import { createWeaponView, WEAPONS, GRENADE_PRICE, createGrenades } from './weapons.js';
+import { createWeaponView, WEAPONS, GRENADE_DEFS, GRENADE_MAX, createGrenades } from './weapons.js';
 import { createBots, stepBots, resetBot, killBot } from './bots.js';
 import {
   createMatch, startMatch, startRound, beginLive, roundOutcome, endRound, nextRound,
@@ -145,7 +151,13 @@ scene.add(bombGroup);
 
 const body = player.state;
 let ownedPrimary = 'rifle';
-let grenadeCount = 0;
+// Grenades: one count per kind, max two each; G throws the selected kind, H cycles it.
+let nadeCounts = { he: 0, smoke: 0, flash: 0 };
+let nadeSelected = 'he';
+// Live smoke clouds: {x, z, r, until, group, mat}. A line of sight that crosses
+// one below its top is blocked; the cloud fades in its last two seconds.
+const smokes = [];
+let flashStrength = 0;
 let started = false;
 let frozen = false;
 let elapsed = 0;
@@ -177,7 +189,68 @@ function hasLineOfSight(from, to) {
   if (dist < 0.01) return true;
   losRay.set(from, tmpDir.normalize());
   losRay.far = dist;
-  return losRay.intersectObjects(world.shootables, false).length === 0;
+  if (losRay.intersectObjects(world.shootables, false).length > 0) return false;
+  // Smoke: a sightline that crosses a live cloud below its top is blocked.
+  for (const cloud of smokes) {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const len2 = dx * dx + dz * dz;
+    if (len2 < 0.01) continue;
+    let t = ((cloud.x - from.x) * dx + (cloud.z - from.z) * dz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = from.x + dx * t;
+    const cz = from.z + dz * t;
+    const cy = from.y + (to.y - from.y) * t;
+    if (cy < 3.4 && Math.hypot(cx - cloud.x, cz - cloud.z) < cloud.r) return false;
+  }
+  return true;
+}
+
+// A smoke grenade's cloud: nine soft puffs that hang for 12 seconds.
+function spawnSmoke(at) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#b8b0a4'), transparent: true, opacity: 0.5, roughness: 1, depthWrite: false,
+  });
+  const group = new THREE.Group();
+  for (let i = 0; i < 9; i += 1) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), mat);
+    const a = random() * Math.PI * 2;
+    const r = random() * 2.2;
+    puff.position.set(Math.cos(a) * r, 0.6 + random() * 1.8, Math.sin(a) * r);
+    puff.scale.setScalar(0.8 + random() * 0.7);
+    group.add(puff);
+  }
+  group.position.set(at.x, 0, at.z);
+  scene.add(group);
+  smokes.push({ x: at.x, z: at.z, r: 3.4, until: elapsed + 12, group, mat });
+  sfx.puff();
+}
+
+// A flash grenade's burst: the player whites out in proportion to distance and to
+// how squarely they face it; nearby bots lose their sight for a second or two.
+function flashAt(at) {
+  camera.getWorldDirection(tmpDir);
+  tmpA.copy(at).sub(camera.position);
+  const dist = tmpA.length();
+  if (dist < 32) {
+    tmpA.normalize();
+    const facing = Math.max(0, tmpA.dot(tmpDir));
+    const los = hasLineOfSight(camera.position, at);
+    if (los) {
+      const strength = (1 - dist / 32) * (0.35 + 0.65 * facing);
+      if (strength > 0.15) flashStrength = Math.max(flashStrength, Math.min(1, strength));
+    }
+  }
+  for (const bot of bots) {
+    if (!bot.alive) continue;
+    const p = bot.mover.state.position;
+    const d = Math.hypot(p.x - at.x, p.z - at.z);
+    if (d < 28) {
+      tmpB.set(p.x, p.y + 1.5, p.z);
+      if (hasLineOfSight(tmpB, at)) bot.blindUntil = Math.max(bot.blindUntil, elapsed + 0.8 + (1 - d / 28) * 1.6);
+    }
+  }
+  sfx.flash();
 }
 
 function damageFighter(target, amount, attacker, part) {
@@ -275,22 +348,33 @@ function botShoot(bot, from, dir, damage) {
   }
 }
 
+function planText() {
+  const allies = bots.filter((b) => b.team === 'ember');
+  const aNames = allies.filter((b) => b.assignedSite === 'A').map((b) => b.name).join(', ');
+  const bNames = allies.filter((b) => b.assignedSite === 'B').map((b) => b.name).join(', ');
+  if (match.plan === 'SPLIT') return `PLAN: SPLIT — A: ${aNames} · B: ${bNames}`;
+  return `PLAN: ${match.plan} — ${match.plan === 'A' ? aNames : bNames}`;
+}
+
 function resetPositions() {
   player.teleport(ATTACKER_SPAWNS[0].x, ATTACKER_SPAWNS[0].z, ATTACKER_SPAWNS[0].yaw);
   playerFighter.hp = 100;
   playerFighter.alive = true;
-  const site = match.round % 2 === 1 ? 'A' : 'B';
-  const other = site === 'A' ? 'B' : 'A';
+  const plan = match.plan;
   const allies = bots.filter((b) => b.team === 'ember');
   const enemies = bots.filter((b) => b.team === 'ashen');
-  resetBot(allies[0], ATTACKER_SPAWNS[1], 'ember', site);
-  resetBot(allies[1], ATTACKER_SPAWNS[2], 'ember', other);
-  resetBot(enemies[0], DEFENDER_SPAWNS[0], 'ashen', site);
-  resetBot(enemies[1], DEFENDER_SPAWNS[1], 'ashen', other);
-  resetBot(enemies[2], DEFENDER_SPAWNS[2], 'ashen', site);
-  resetBot(enemies[3], DEFENDER_SPAWNS[3], 'ashen', other);
+  // The squad follows the plan: all to A, all to B, or two and two.
+  const allySite = (i) => (plan === 'A' ? 'A' : plan === 'B' ? 'B' : i < 2 ? 'A' : 'B');
+  allies.forEach((bot, i) => resetBot(bot, ATTACKER_SPAWNS[i + 1], 'ember', allySite(i)));
+  // Defenders split two on A, three on B.
+  enemies.forEach((bot, i) => resetBot(bot, DEFENDER_SPAWNS[i], 'ashen', i < 2 ? 'A' : 'B'));
   grenades.clear();
-  grenadeCount = 0;
+  for (const cloud of smokes) scene.remove(cloud.group);
+  smokes.length = 0;
+  flashStrength = 0;
+  hud.setFlash(0);
+  nadeCounts = { he: 0, smoke: 0, flash: 0 };
+  nadeSelected = 'he';
   plantProgress = 0;
   match.bomb.state = 'carried';
   match.bomb.carrier = 'player';
@@ -300,6 +384,8 @@ function resetPositions() {
   weaponView.refill();
   hud.setAmmo(weaponView.state.mag, weaponView.state.reserve, weaponView.state.def.name);
   hud.setHealth(100);
+  hud.setGrenades(nadeCounts, nadeSelected);
+  hud.setPlan(planText());
   hud.hidePlant();
 }
 
@@ -309,19 +395,21 @@ function startNewMatch() {
   resetPositions();
   hud.setScore(0, 0);
   hud.setMoney(match.money);
-  hud.showBuy(match.money, ownedPrimary);
+  hud.showBuy(match.money, ownedPrimary, planText());
   hud.showMessage('Round 1 — Buy phase. B opens the buy menu.', 4000);
 }
 
 function buy(id) {
   if (match.phase !== 'buy') return;
-  if (id === 'grenade') {
-    if (grenadeCount >= 2 || match.money < GRENADE_PRICE) return;
-    match.money -= GRENADE_PRICE;
-    grenadeCount += 1;
-    hud.setGrenades(grenadeCount);
+  if (GRENADE_DEFS[id]) {
+    const def = GRENADE_DEFS[id];
+    if (nadeCounts[id] >= GRENADE_MAX || match.money < def.price) return;
+    match.money -= def.price;
+    nadeCounts[id] += 1;
+    sfx.buy();
+    hud.setGrenades(nadeCounts, nadeSelected);
     hud.setMoney(match.money);
-    hud.showBuy(match.money, ownedPrimary);
+    hud.showBuy(match.money, ownedPrimary, planText());
     return;
   }
   const def = WEAPONS[id];
@@ -334,9 +422,10 @@ function buy(id) {
     weaponView.equip(id);
     weaponView.refill();
   }
+  sfx.buy();
   hud.setAmmo(weaponView.state.mag, weaponView.state.reserve, def.name);
   hud.setMoney(match.money);
-  hud.showBuy(match.money, ownedPrimary);
+  hud.showBuy(match.money, ownedPrimary, planText());
 }
 
 function onLockChange(locked) {
@@ -357,7 +446,7 @@ hud.onPlay(() => {
   } else if (match.phase === 'roundEnd') {
     if (nextRound(match)) {
       resetPositions();
-      hud.showBuy(match.money, ownedPrimary);
+      hud.showBuy(match.money, ownedPrimary, planText());
       hud.showMessage(`Round ${match.round} — Buy phase`, 3000);
     } else {
       hud.showOverlay('matchEnd', match.matchWinner === 'ember'
@@ -457,7 +546,7 @@ function step(dt) {
     if (match.phaseTime <= 0 && !shot) {
       if (nextRound(match)) {
         resetPositions();
-        hud.showBuy(match.money, ownedPrimary);
+        hud.showBuy(match.money, ownedPrimary, planText());
         hud.showMessage(`Round ${match.round} — Buy phase`, 3000);
         input.requestLock();
       } else {
@@ -479,6 +568,7 @@ function step(dt) {
     stepBots(bots, dt, {
       fighters,
       phase,
+      now: elapsed,
       noise,
       bomb: match.bomb,
       hasLineOfSight,
@@ -516,7 +606,23 @@ function step(dt) {
     });
   }
 
-  grenades.step(dt, (pos) => explode(pos));
+  grenades.step(dt, (pos, kind) => {
+    if (kind === 'smoke') spawnSmoke(pos);
+    else if (kind === 'flash') flashAt(pos);
+    else explode(pos);
+  });
+
+  // Smoke clouds fade in their last two seconds, then lift.
+  for (let i = smokes.length - 1; i >= 0; i -= 1) {
+    const cloud = smokes[i];
+    const left = cloud.until - elapsed;
+    if (left <= 0) {
+      scene.remove(cloud.group);
+      smokes.splice(i, 1);
+    } else if (left < 2) {
+      cloud.mat.opacity = 0.5 * (left / 2);
+    }
+  }
 
   // Bomb mesh follows its state.
   if (match.bomb.state === 'dropped') {
@@ -548,7 +654,9 @@ function frame(now) {
         if (pressed.has('Digit1')) buy('rifle');
         if (pressed.has('Digit2')) buy('smg');
         if (pressed.has('Digit3')) buy('dmr');
-        if (pressed.has('Digit4')) buy('grenade');
+        if (pressed.has('Digit4')) buy('he');
+        if (pressed.has('Digit5')) buy('smoke');
+        if (pressed.has('Digit6')) buy('flash');
       } else if (match.phase === 'live' || match.phase === 'buy') {
         if (pressed.has('Digit1')) {
           weaponView.equip(ownedPrimary);
@@ -562,13 +670,18 @@ function frame(now) {
           weaponView.equip(weaponView.state.def.id === 'pistol' ? ownedPrimary : 'pistol');
           hud.setAmmo(weaponView.state.mag, weaponView.state.reserve, weaponView.state.def.name);
         }
-        if (pressed.has('KeyG') && grenadeCount > 0 && playerFighter.alive) {
-          grenadeCount -= 1;
-          hud.setGrenades(grenadeCount);
+        if (pressed.has('KeyG') && nadeCounts[nadeSelected] > 0 && playerFighter.alive) {
+          nadeCounts[nadeSelected] -= 1;
+          hud.setGrenades(nadeCounts, nadeSelected);
           camera.getWorldDirection(tmpDir);
           tmpA.copy(camera.position).addScaledVector(tmpDir, 0.5);
-          grenades.throwGrenade(tmpA, tmpDir);
+          grenades.throwGrenade(tmpA, tmpDir, nadeSelected);
           sfx.shot('pistol');
+        }
+        if (pressed.has('KeyH') && playerFighter.alive) {
+          const order = ['he', 'smoke', 'flash'];
+          nadeSelected = order[(order.indexOf(nadeSelected) + 1) % order.length];
+          hud.setGrenades(nadeCounts, nadeSelected);
         }
         if (pressed.has('KeyR')) {
           const before = weaponView.state.reloadLeft;
@@ -577,7 +690,7 @@ function frame(now) {
         }
       }
       if (pressed.has('KeyB') && match.phase === 'buy') {
-        if (hudBuyHidden()) hud.showBuy(match.money, ownedPrimary);
+        if (hudBuyHidden()) hud.showBuy(match.money, ownedPrimary, planText());
         else hud.hideBuy();
       }
       if (input.state.firing && playerFighter.alive && (match.phase === 'live' || match.phase === 'buy')) {
@@ -595,6 +708,11 @@ function frame(now) {
     }
     if (accumulator > FIXED_STEP * 5) accumulator = 0;
     syncCamera();
+  }
+  // Flash white-out fades back over a couple of seconds.
+  if (flashStrength > 0) {
+    flashStrength = Math.max(0, flashStrength - dt * 0.5);
+    hud.setFlash(flashStrength);
   }
   // Per-frame visuals: tracers fade, explosion light decays, debris falls.
   for (const t of tracers) {
@@ -623,7 +741,7 @@ function frame(now) {
   minimapTimer -= dt;
   if (minimapTimer <= 0) {
     minimapTimer = 0.2;
-    hud.drawMinimap(player, bots, match.bomb);
+    hud.drawMinimap(player, bots, match.bomb, smokes);
   }
   renderer.render(scene, camera);
 }
@@ -660,13 +778,17 @@ function runShot(name) {
   hud.hideBuy();
   hud.hideMessage();
   hud.hideBanner();
-  if (name === 'start') {
+  if (name === 'buy') {
+    // Buy phase over the yard: the buy menu, the team plan and the squad walking
+    // out, all in frame. A gameplay frame — the menu sits over the live yard.
+    startNewMatch();
     resetPositions();
+    hud.showBuy(match.money, ownedPrimary, planText());
     body.position.set(0, 0, 14);
     body.yaw = 0;
     body.pitch = 0;
+    settle(60);
     syncCamera();
-    hud.showOverlay('start');
     paintTwiceThenReady();
     return;
   }
@@ -674,15 +796,17 @@ function runShot(name) {
   hud.hideBuy();
   beginLive(match);
   resetPositions();
-  if (name === 'mid') {
+  if (name === 'cover') {
+    // A squad firefight down mid: two enemies in the open lane ahead, an ally on
+    // the right edge, three shots fired so the last tracer and muzzle flash are
+    // still lit when the frame is captured.
     body.position.set(-2, 0, 6);
     body.yaw = 0.25;
     body.pitch = 0;
     settle(170);
-    // Stage the fight: one enemy in the open lane ahead, an ally on the right
-    // edge, so the frame shows a firefight instead of an empty corridor.
-    const staged = bots.find((b) => b.team === 'ashen' && b.alive);
-    if (staged) staged.mover.teleport(-6, -2, Math.PI * 0.9);
+    const staged = bots.filter((b) => b.team === 'ashen' && b.alive);
+    if (staged[0]) staged[0].mover.teleport(-6, -2, Math.PI * 0.9);
+    if (staged[1]) staged[1].mover.teleport(2, -4, Math.PI * 0.8);
     const ally = bots.find((b) => b.team === 'ember' && b.alive);
     if (ally) ally.mover.teleport(0.5, 1.5, -0.4);
     // Aim at the nearest living enemy and fire three times, two fixed steps
@@ -716,21 +840,39 @@ function runShot(name) {
     match.bomb.z = SITES.A.z;
     match.bomb.timer = 28;
     // West lane down to Site A: a clear sightline past the containers. The
-    // defender stands in the open lane, clear of the teal container's footprint.
+    // defender stands in the open lane, clear of the teal container's footprint,
+    // and an ally guards the approach behind the player.
     body.position.set(-17, 0, -3.5);
     settle(90);
     const enemy = bots.find((b) => b.team === 'ashen' && b.alive);
     if (enemy) enemy.mover.teleport(-15.5, -7, Math.PI * 0.75);
+    const ally = bots.find((b) => b.team === 'ember' && b.alive);
+    if (ally) ally.mover.teleport(-13, -5, 0.6);
     tmpA.set(SITES.A.x, 1.2, SITES.A.z);
     aimAt(tmpA);
     settle(6);
-  } else if (name === 'end') {
-    endRound(match, 'ember', 'Site A secured — charge detonated');
-    body.position.set(-14, 0, -7);
-    settle(20);
-    tmpA.set(SITES.A.x, 1.4, SITES.A.z);
+  } else if (name === 'push') {
+    // A lane push behind a smoke cloud: throw smoke up the A lane, let it bloom,
+    // then stage the squad pushing in with two defenders in the lane.
+    body.position.set(-8, 0, 6);
+    body.yaw = -0.5;
+    body.pitch = 0;
+    syncCamera();
+    tmpA.set(-12, 1.6, 2);
     aimAt(tmpA);
-    hud.showOverlay('roundEnd', `Site A secured — charge detonated. Score Emberline ${match.scoreEmber} — ${match.scoreAshen} Ashen.`);
+    camera.getWorldDirection(tmpDir);
+    tmpB.copy(camera.position).addScaledVector(tmpDir, 0.5);
+    grenades.throwGrenade(tmpB, tmpDir, 'smoke');
+    settle(110);
+    const foes = bots.filter((b) => b.team === 'ashen' && b.alive);
+    if (foes[0]) foes[0].mover.teleport(-14, -2, Math.PI * 0.75);
+    if (foes[1]) foes[1].mover.teleport(-10, -6, Math.PI * 0.6);
+    const ally = bots.find((b) => b.team === 'ember' && b.alive);
+    if (ally) ally.mover.teleport(-4, 2, -0.4);
+    body.position.set(-8, 0, 6);
+    tmpA.set(-12, 1.3, -2);
+    aimAt(tmpA);
+    settle(2);
   }
   hud.setScore(match.scoreEmber, match.scoreAshen);
   hud.setAmmo(weaponView.state.mag, weaponView.state.reserve, weaponView.state.def.name);
@@ -742,7 +884,7 @@ function runShot(name) {
 function paintTwiceThenReady() {
   // Captures never run the frame loop, so push the HUD and minimap once here.
   syncHud();
-  hud.drawMinimap(player, bots, match.bomb);
+  hud.drawMinimap(player, bots, match.bomb, smokes);
   let painted = 0;
   function paint() {
     requestAnimationFrame(paint);
@@ -767,7 +909,7 @@ syncCamera();
 hud.setAmmo(weaponView.state.mag, weaponView.state.reserve, weaponView.state.def.name);
 hud.setHealth(100);
 hud.setMoney(match.money);
-hud.setGrenades(0);
+hud.setGrenades({ he: 0, smoke: 0, flash: 0 }, 'he');
 hud.setScore(0, 0);
 // Read-only handle for debugging and automated play-tests.
 window.__emberline = { match, player: playerFighter, bots, weapon: weaponView };

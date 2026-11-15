@@ -1,7 +1,7 @@
 // The DOM HUD: crosshair, hit marker, health, ammo, money, round timer, score, kill feed,
 // buy menu, plant progress and a live minimap. It never touches the simulation; main.js
 // pushes numbers in and reads the play callback out.
-import { WEAPONS, GRENADE_PRICE } from './weapons.js';
+import { WEAPONS, GRENADE_DEFS } from './weapons.js';
 
 const COPY = {
   start: {
@@ -55,6 +55,8 @@ export function createHud(world) {
   const plantLabel = el('plant-label');
   const grenadeCount = el('grenade-count');
   const bombStatus = el('bomb-status');
+  const planLine = el('plan');
+  const flashVeil = el('flash');
   const minimap = el('minimap');
   const mapCtx = minimap.getContext('2d');
   let hitTimer = 0;
@@ -95,11 +97,19 @@ export function createHud(world) {
       setText(scoreEmber, 'se', String(ember));
       setText(scoreAshen, 'sa', String(ashen));
     },
-    setGrenades(count) {
-      setText(grenadeCount, 'nades', `HE x${count}`);
+    setGrenades(counts, selected) {
+      const parts = ['he', 'smoke', 'flash'].map((kind) => `${kind === selected ? '▸' : ''}${GRENADE_DEFS[kind].short} x${counts[kind] ?? 0}`);
+      setText(grenadeCount, 'nades', parts.join(' · '));
     },
     setBombStatus(text) {
       setText(bombStatus, 'bomb', text);
+    },
+    setPlan(text) {
+      setText(planLine, 'plan', text);
+    },
+    // A flash grenade whites the screen out; strength 0..1, faded by main.js.
+    setFlash(strength) {
+      flashVeil.style.opacity = String(Math.max(0, Math.min(1, strength)));
     },
     setSpread(spread) {
       const gap = Math.round(3 + spread * 900);
@@ -154,12 +164,13 @@ export function createHud(world) {
     hidePlant() {
       plantBar.hidden = true;
     },
-    showBuy(money, ownedPrimary) {
+    showBuy(money, ownedPrimary, planText) {
       buyMenu.hidden = false;
       this.setMoney(money);
+      if (planText) this.setPlan(planText);
       for (const item of buyMenu.querySelectorAll('[data-buy]')) {
         const id = item.dataset.buy;
-        const price = id === 'grenade' ? GRENADE_PRICE : WEAPONS[id].price;
+        const price = GRENADE_DEFS[id] ? GRENADE_DEFS[id].price : WEAPONS[id].price;
         item.classList.toggle('cant', money < price);
         item.classList.toggle('owned', id === ownedPrimary);
         item.querySelector('.price').textContent = id === ownedPrimary ? 'OWNED' : `$${price}`;
@@ -182,7 +193,7 @@ export function createHud(world) {
     onPlay(handler) {
       play.addEventListener('click', handler);
     },
-    drawMinimap(player, bots, bomb) {
+    drawMinimap(player, bots, bomb, smokes = []) {
       const w = minimap.width;
       const h = minimap.height;
       const sx = w / 47;
@@ -195,6 +206,13 @@ export function createHud(world) {
       mapCtx.fillStyle = '#3a332b';
       for (const r of world.wallRects) {
         mapCtx.fillRect(px(r.x - r.w / 2), pz(r.z - r.d / 2), Math.max(1, r.w * sx), Math.max(1, r.d * sz));
+      }
+      // Smoke clouds read as grey discs: the plan's cover, on the map.
+      mapCtx.fillStyle = 'rgba(184,176,164,0.5)';
+      for (const cloud of smokes) {
+        mapCtx.beginPath();
+        mapCtx.arc(px(cloud.x), pz(cloud.z), Math.max(3, cloud.r * sx), 0, Math.PI * 2);
+        mapCtx.fill();
       }
       mapCtx.font = '700 11px system-ui, sans-serif';
       mapCtx.textAlign = 'center';

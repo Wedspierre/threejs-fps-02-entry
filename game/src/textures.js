@@ -156,18 +156,22 @@ export function hazardTexture() {
 }
 
 export function glowTexture() {
-  // A furnace mouth: white-hot core cooling to ember orange at the edges.
+  // A furnace mouth: a small hot core cooling to ember orange at the edges, so it
+  // reads as a glowing opening instead of a blown-out white rectangle.
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
   const grad = ctx.createRadialGradient(128, 64, 4, 128, 64, 130);
-  grad.addColorStop(0, '#fff3c4');
-  grad.addColorStop(0.35, '#ffc23c');
-  grad.addColorStop(0.7, '#ff7a1a');
-  grad.addColorStop(1, '#7a2c08');
+  grad.addColorStop(0, '#ffe9a8');
+  grad.addColorStop(0.3, '#ffc23c');
+  grad.addColorStop(0.65, '#e86a18');
+  grad.addColorStop(1, '#5e2206');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 256, 128);
+  // Dark bars across the mouth, like the furnace's grate, break the flat glow.
+  ctx.fillStyle = 'rgba(30,14,6,0.55)';
+  for (let y = 18; y < 128; y += 30) ctx.fillRect(0, y, 256, 7);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -178,23 +182,48 @@ export function skyTexture() {
   canvas.width = 1024;
   canvas.height = 512;
   const ctx = canvas.getContext('2d');
+  // Dusk gradient: the upper sky stays a readable dusky blue, not flat black, and
+  // the horizon band carries the sunset, so the top of the frame is a sky, not paint.
   const grad = ctx.createLinearGradient(0, 0, 0, 512);
-  grad.addColorStop(0, '#0d1526');
-  grad.addColorStop(0.42, '#2c3550');
-  grad.addColorStop(0.68, '#8a4a28');
-  grad.addColorStop(0.82, '#e88030');
+  grad.addColorStop(0, '#16233f');
+  grad.addColorStop(0.32, '#2c3550');
+  grad.addColorStop(0.52, '#6b4a34');
+  grad.addColorStop(0.66, '#c96a2e');
+  grad.addColorStop(0.78, '#f0923c');
   grad.addColorStop(1, '#f7a44a');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 1024, 512);
-  // Low sun glow on the horizon.
-  const sun = ctx.createRadialGradient(512, 430, 8, 512, 430, 260);
-  sun.addColorStop(0, 'rgba(255,214,140,0.9)');
-  sun.addColorStop(0.4, 'rgba(255,150,60,0.35)');
+  // Low sun on the horizon, placed where a level look actually sees it, with a
+  // solid disc so it reads as a sun and not a smudge. The glow is stretched wide
+  // horizontally, so the sunset reads from any yaw instead of one azimuth.
+  ctx.save();
+  ctx.translate(512, 292);
+  ctx.scale(2.4, 1);
+  const sun = ctx.createRadialGradient(0, 0, 6, 0, 0, 230);
+  sun.addColorStop(0, 'rgba(255,226,150,0.95)');
+  sun.addColorStop(0.35, 'rgba(255,160,70,0.45)');
   sun.addColorStop(1, 'rgba(255,150,60,0)');
   ctx.fillStyle = sun;
-  ctx.fillRect(0, 0, 1024, 512);
-  // Faint early stars high up.
+  ctx.fillRect(-260, -230, 520, 460);
+  ctx.restore();
+  ctx.fillStyle = '#ffe9a8';
+  ctx.beginPath();
+  ctx.arc(512, 292, 24, 0, Math.PI * 2);
+  ctx.fill();
+  // Soft cloud streaks across the orange band.
   const random = rng(97);
+  for (let i = 0; i < 7; i += 1) {
+    const y = 300 + random() * 90;
+    const x = random() * 1024;
+    const w = 140 + random() * 220;
+    const streak = ctx.createLinearGradient(x - w / 2, y, x + w / 2, y);
+    streak.addColorStop(0, 'rgba(255,180,110,0)');
+    streak.addColorStop(0.5, `rgba(255,180,110,${0.10 + random() * 0.12})`);
+    streak.addColorStop(1, 'rgba(255,180,110,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(x - w / 2, y - 5, w, 10);
+  }
+  // Faint early stars high up.
   for (let i = 0; i < 90; i += 1) {
     ctx.fillStyle = `rgba(239,232,218,${0.25 + random() * 0.5})`;
     ctx.fillRect(random() * 1024, random() * 170, 1.6, 1.6);

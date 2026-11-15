@@ -74,6 +74,12 @@ export const sfx = {
     tone(ac, { frequency: 500, duration: 0.05, type: 'square', gain: 0.08, delay: 0.18 });
     tone(ac, { frequency: 900, duration: 0.06, type: 'square', gain: 0.1, delay: 0.4 });
   },
+  buy() {
+    const ac = audio();
+    if (!ac || ac.state !== 'running') return;
+    tone(ac, { frequency: 1180, duration: 0.06, type: 'square', gain: 0.1 });
+    tone(ac, { frequency: 1560, duration: 0.08, type: 'square', gain: 0.1, delay: 0.07 });
+  },
   hit() {
     const ac = audio();
     if (!ac || ac.state !== 'running') return;
@@ -95,6 +101,17 @@ export const sfx = {
     if (!ac || ac.state !== 'running') return;
     burst(ac, { duration: 1.1, frequency: 900, gain: 0.9, sweepTo: 60 });
     tone(ac, { frequency: 70, duration: 0.9, type: 'sine', gain: 0.5, slideTo: 28 });
+  },
+  puff() {
+    const ac = audio();
+    if (!ac || ac.state !== 'running') return;
+    burst(ac, { duration: 0.7, frequency: 600, gain: 0.25, sweepTo: 140 });
+  },
+  flash() {
+    const ac = audio();
+    if (!ac || ac.state !== 'running') return;
+    tone(ac, { frequency: 2400, duration: 0.18, type: 'sine', gain: 0.2, slideTo: 900 });
+    burst(ac, { duration: 0.12, frequency: 5000, gain: 0.2, sweepTo: 1200 });
   },
   beep(high) {
     const ac = audio();

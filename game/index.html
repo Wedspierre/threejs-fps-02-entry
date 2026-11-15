@@ -76,6 +76,17 @@
     position: fixed; left: 32px; top: 58px;
     font-family: var(--font-readout); font-size: 12px; color: var(--muted);
   }
+  #plan {
+    position: fixed; left: 32px; top: 80px;
+    font-family: var(--font-readout); font-size: 12px; color: var(--teal);
+    background: color-mix(in srgb, var(--canvas) 72%, transparent);
+    border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: 3px 8px; white-space: nowrap;
+  }
+  #flash {
+    position: fixed; inset: 0; background: #fff; opacity: 0;
+    pointer-events: none; z-index: 30;
+  }
 
   #minimap {
     position: fixed; right: 24px; top: 18px;
@@ -199,6 +210,8 @@
   </div>
   <div id="money"><small>MONEY</small><span id="money-value">$800</span></div>
   <div id="bomb-status">CHARGE: WITH YOU</div>
+  <div id="plan">PLAN: SPLIT</div>
+  <div id="flash"></div>
 
   <canvas id="minimap" width="170" height="130"></canvas>
   <div id="killfeed"></div>
@@ -217,7 +230,7 @@
   <div id="ammo">
     <div class="row"><span id="ammo-mag">30</span><span id="ammo-reserve">/ 90</span></div>
     <div id="weapon-name">VK-7 Carbine</div>
-    <div id="grenade-count">HE x0</div>
+    <div id="grenade-count">HE x0 · SMK x0 · FLS x0</div>
   </div>
 
   <div id="buy-menu" hidden>
@@ -226,8 +239,10 @@
     <div data-buy="rifle"><span><span class="key">1</span>VK-7 Carbine</span><span class="price">$2700</span></div>
     <div data-buy="smg"><span><span class="key">2</span>Moth-9 SMG</span><span class="price">$1500</span></div>
     <div data-buy="dmr"><span><span class="key">3</span>Longshot DMR</span><span class="price">$4750</span></div>
-    <div data-buy="grenade"><span><span class="key">4</span>HE Grenade (max 2)</span><span class="price">$300</span></div>
-    <p class="hint">Win a round +$3250 · lose +$1900 · kill +$300 · plant +$300. P-9 Sidewinder is always free.</p>
+    <div data-buy="he"><span><span class="key">4</span>HE Grenade (max 2)</span><span class="price">$300</span></div>
+    <div data-buy="smoke"><span><span class="key">5</span>Smoke Grenade (max 2)</span><span class="price">$200</span></div>
+    <div data-buy="flash"><span><span class="key">6</span>Flash Grenade (max 2)</span><span class="price">$200</span></div>
+    <p class="hint">Win a round +$3250 · lose +$1900 · kill +$300 · plant +$300. P-9 Sidewinder is always free. G throws the selected grenade, H cycles it.</p>
   </div>
 </div>
 
@@ -238,7 +253,7 @@
     <button id="play" type="button">Click to play</button>
     <ul class="keys">
       <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move · <kbd>Mouse</kbd> Look · <kbd>Click</kbd> Fire</li>
-      <li><kbd>R</kbd> Reload · <kbd>Q</kbd> Switch weapon · <kbd>G</kbd> Throw grenade</li>
+      <li><kbd>R</kbd> Reload · <kbd>Q</kbd> Switch weapon · <kbd>G</kbd> Throw grenade · <kbd>H</kbd> Cycle grenade</li>
       <li><kbd>E</kbd> Hold to plant · <kbd>B</kbd> Buy menu · <kbd>Ctrl</kbd> Crouch · <kbd>Space</kbd> Jump</li>
     </ul>
   </section>

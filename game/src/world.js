@@ -158,7 +158,7 @@ export function createWorld(scene) {
     map: glowTexture(),
     emissive: new THREE.Color('#ffffff'),
     emissiveMap: glowTexture(),
-    emissiveIntensity: 1.6,
+    emissiveIntensity: 0.9,
     roughness: 0.6,
   });
 
@@ -257,6 +257,60 @@ export function createWorld(scene) {
   drum(0.45, 1.1, 21.5, 6, 'rust');
   drum(0.45, 1.1, -19, 15.5, 'teal');
   drum(0.45, 1.1, 19, 15.5, 'rust');
+  // A drum cluster by the furnace and two more guarding the site mouths.
+  drum(0.45, 1.1, -6.5, -6.5, 'rust');
+  drum(0.45, 1.1, -5.4, -6.2, 'teal');
+  drum(0.45, 1.1, 6.5, -6.5, 'teal');
+  drum(0.45, 1.1, -19.5, -8.5, 'rust');
+  drum(0.45, 1.1, 19.5, -8.5, 'teal');
+
+  // Pallet stacks: flat boards with a crate on top, low cover that breaks the
+  // lanes' sightlines without blocking a route. Kept clear of the waypoint graph.
+  function pallets(x, z, material) {
+    for (let i = 0; i < 3; i += 1) {
+      box(1.7, 0.12, 1.2, x, 0.06 + i * 0.13, z, material);
+    }
+    box(1.2, 0.9, 0.9, x, 0.85, z, 'crateRust');
+  }
+  pallets(-6, 12.5, 'crateDark');
+  pallets(6, 12.5, 'crateDark');
+  pallets(-21, 12, 'crateDark');
+
+  // Cables: thin runs strung between the crane, the furnace frame and the walls,
+  // so the air above the lanes is not empty. Visual only, above head height, in
+  // a light steel that still reads against the dusk sky.
+  const cableMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(PALETTE.muted), roughness: 0.6, metalness: 0.4 });
+  function cable(a, b, sag) {
+    const steps = 8;
+    let prev = a;
+    for (let i = 1; i <= steps; i += 1) {
+      const t = i / steps;
+      const p = new THREE.Vector3(
+        a.x + (b.x - a.x) * t,
+        a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * sag,
+        a.z + (b.z - a.z) * t,
+      );
+      const len = prev.distanceTo(p);
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, len, 6), cableMat);
+      seg.position.copy(prev).add(p).multiplyScalar(0.5);
+      seg.lookAt(p);
+      seg.rotateX(Math.PI / 2);
+      group.add(seg);
+      prev = p;
+    }
+  }
+  cable(new THREE.Vector3(-17, 4.7, -11), new THREE.Vector3(-12, 2.6, -8), 0.5);
+  cable(new THREE.Vector3(-8, 4.4, 8), new THREE.Vector3(8, 4.4, 8), 0.7);
+  cable(new THREE.Vector3(0, 4.75, -3), new THREE.Vector3(8, 4.4, 8), 0.6);
+
+  // A fat pipe elbow rising out of the furnace block, the yard's second landmark.
+  // The riser collides; the horizontal run hangs above head height.
+  drum(0.4, 2.6, 4.6, -4.6, 'hairline');
+  const elbowTop = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 1.8, 12), materials.hairline);
+  elbowTop.rotation.z = Math.PI / 2;
+  elbowTop.position.set(5.4, 2.5, -4.6);
+  elbowTop.castShadow = true;
+  group.add(elbowTop);
 
   // Hazard stripes mark the mouth of each bomb site.
   for (const x of [-17, 17]) {
@@ -300,7 +354,7 @@ export function createWorld(scene) {
   );
   scene.add(skyDome);
 
-  // Yard lamps: two posts over the lanes, warm pools of light between the lanes'
+  // Yard lamps: posts over the lanes, warm pools of light between the lanes'
   // cover. Visual only — the poles stand clear of the waypoint graph.
   const lampGlow = new THREE.MeshStandardMaterial({
     color: new THREE.Color(PALETTE.accent),
@@ -308,16 +362,16 @@ export function createWorld(scene) {
     emissiveIntensity: 2.4,
     roughness: 0.4,
   });
-  for (const x of [-8, 8]) {
+  for (const [x, z] of [[-8, 8], [8, 8], [-17.5, -3.5], [17.5, -3.5]]) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 4.4, 8), materials.hairline);
-    pole.position.set(x, 2.2, 8);
+    pole.position.set(x, 2.2, z);
     pole.castShadow = true;
     group.add(pole);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, 0.34), lampGlow);
-    head.position.set(x, 4.45, 8);
+    head.position.set(x, 4.45, z);
     group.add(head);
     const lamp = new THREE.PointLight(new THREE.Color('#ffc27a'), 30, 17, 1.7);
-    lamp.position.set(x, 4.2, 8);
+    lamp.position.set(x, 4.2, z);
     scene.add(lamp);
   }
 
@@ -342,7 +396,7 @@ export function createWorld(scene) {
   fill.position.set(-12, 10, 14);
   scene.add(fill);
 
-  const furnaceLight = new THREE.PointLight(new THREE.Color('#ff7a1a'), 26, 18, 1.8);
+  const furnaceLight = new THREE.PointLight(new THREE.Color('#ff7a1a'), 14, 14, 1.8);
   furnaceLight.position.set(0, 1.6, -1);
   scene.add(furnaceLight);
 

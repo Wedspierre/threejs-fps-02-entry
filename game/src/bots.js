@@ -1,7 +1,9 @@
-// Bots: the other nine fighters. Each one walks a waypoint graph, holds positions, reacts
-// to what it sees (a raycast line of sight) and hears (gunfire noise), and shoots back with
-// aim that steadies the longer it stands still. Attackers carry the bomb to a site and plant
-// it; defenders retake and defuse. One mover drives them, the same one as the player.
+// Bots: the other nine fighters of a 5v5. Each one walks a waypoint graph, holds
+// positions, reacts to what it sees (a raycast line of sight) and hears (gunfire
+// noise), and shoots back with aim that steadies the longer it stands still.
+// Attackers carry the bomb to a site and plant it; defenders retake and defuse.
+// A flash grenade blinds a bot: while blind it cannot see, shoot or route. One mover
+// drives them, the same one as the player.
 import * as THREE from 'three';
 import { createMover } from './player.js';
 import { findPath, nearestNode, SITES } from './world.js';
@@ -16,8 +18,8 @@ const THINK_EVERY = 0.2;
 const SEE_RANGE = 46;
 const FOV_COS = 0.15; // ~81 degrees half-angle
 
-const ALLY_NAMES = ['Kestrel', 'Vex'];
-const ENEMY_NAMES = ['Ash', 'Cinder', 'Soot', 'Flint'];
+const ALLY_NAMES = ['Kestrel', 'Vex', 'Rook', 'Juno'];
+const ENEMY_NAMES = ['Ash', 'Cinder', 'Soot', 'Flint', 'Slag'];
 
 function botColors(team) {
   return team === 'ember'
@@ -34,6 +36,10 @@ export function createBot(scene, name, team) {
   const trimMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(colors.trim), emissive: new THREE.Color(colors.trim), emissiveIntensity: 0.7, roughness: 0.5,
   });
+  const gunMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1d1f1c'), roughness: 0.45, metalness: 0.5 });
+  const gunAccent = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(colors.trim), emissive: new THREE.Color(colors.trim), emissiveIntensity: 0.5, roughness: 0.5,
+  });
 
   const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.8, 0.22), legsMat);
   legs.position.y = 0.4;
@@ -43,8 +49,24 @@ export function createBot(scene, name, team) {
   head.position.y = 1.6;
   const visor = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.05), trimMat);
   visor.position.set(0, 1.62, -0.15);
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.1, 0.62), legsMat);
-  gun.position.set(0.2, 1.15, -0.32);
+  // A rifle the eye can actually read: receiver, barrel, magazine and stock, held
+  // across the body with the barrel past the torso, so a bot at range still reads
+  // as an armed fighter and not a capsule dummy.
+  const gun = new THREE.Group();
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.11, 0.44), gunMat);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 8), gunMat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.02, -0.38);
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.07), gunMat);
+  mag.position.set(0, -0.14, -0.02);
+  mag.rotation.x = 0.18;
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.2), gunMat);
+  stock.position.set(0, -0.01, 0.3);
+  const sight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.05, 0.06), gunAccent);
+  sight.position.set(0, 0.08, 0.02);
+  gun.add(receiver, barrel, mag, stock, sight);
+  gun.position.set(0.22, 1.18, -0.28);
+  gun.rotation.x = 0.12;
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.06, 0.32), trimMat);
   stripe.position.y = 1.32;
   group.add(legs, torso, head, visor, gun, stripe);
@@ -80,6 +102,7 @@ export function createBot(scene, name, team) {
     lastHeard: null,
     strafeDir: 1,
     strafeTimer: 0,
+    blindUntil: 0,
     hitMeshes: [],
   };
   head.userData = { fighter: bot, part: 'head' };
@@ -119,7 +142,8 @@ function chestPos(fighter, out) {
 }
 
 // Step every bot for one fixed step. env is the live game context main.js hands in:
-// fighters (player + bots), raycaster, worldShootables, noise, bomb, phase, callbacks.
+// fighters (player + bots), raycaster, worldShootables, noise, bomb, phase, now,
+// callbacks.
 export function stepBots(bots, dt, env) {
   const from = new THREE.Vector3();
   const to = new THREE.Vector3();
@@ -130,6 +154,19 @@ export function stepBots(bots, dt, env) {
     const mover = bot.mover;
     const pos = mover.state.position;
     bot.thinkTimer -= dt;
+
+    // Blind: a flash grenade whites a bot out. It stands still, sees nothing and
+    // fires nothing until its sight comes back — and its steadied aim is gone.
+    if (env.now < bot.blindUntil) {
+      bot.target = null;
+      bot.channel = 0;
+      bot.aimTime = 0;
+      bot.burstLeft = 0;
+      mover.move(dt, 0, 0, BOT_SPEED, false);
+      bot.group.position.copy(pos);
+      bot.group.rotation.y = mover.state.yaw;
+      continue;
+    }
 
     // --- Perception, every THINK_EVERY seconds: nearest visible enemy. Only live
     // rounds have combat; during the buy phase bots hold their spawn positions. ---
@@ -167,8 +204,10 @@ export function stepBots(bots, dt, env) {
       }
     }
 
-    // --- Objective behaviour when nothing is in sight. ---
-    if (!bot.target && env.phase === 'live') {
+    // --- Objective behaviour when nothing is in sight. Bots walk to their
+    // positions in the buy phase too, so the squad is visibly moving out while
+    // the player buys; combat, planting and defusing are live-only. ---
+    if (!bot.target && (env.phase === 'live' || env.phase === 'buy')) {
       if (bot.team === 'ember') {
         if (env.bomb.state === 'carried' && env.bomb.carrier === bot) {
           bot.state = 'route';
@@ -361,6 +400,7 @@ export function resetBot(bot, spawn, team, site) {
   bot.assignedSite = site;
   bot.holdNode = team === 'ashen' ? (site === 'A' ? 11 : 12) : 0;
   bot.patrolAt = bot.holdNode;
+  bot.blindUntil = 0;
   bot.group.visible = true;
   bot.group.rotation.set(0, spawn.yaw, 0);
   bot.group.position.set(spawn.x, 0, spawn.z);
