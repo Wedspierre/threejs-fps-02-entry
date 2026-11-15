@@ -26,6 +26,10 @@ three lanes and two bomb sites: **A (Crane Bay)** under the old gantry crane and
   and defuse the charge, and shoot back with aim that steadies as they settle.
 - **HUD:** health, ammo, money, round timer, score, kill feed, live minimap, and a
   plant/defuse progress bar.
+- **The yard itself:** every surface is drawn by the game's own code at runtime —
+  concrete floor slabs, riveted wall panels, stencilled crates, hazard stripes and a
+  dusk sky (`game/src/textures.js`). Warm yard lamps light the lanes; nothing is
+  downloaded, nothing is borrowed.
 
 ## Controls
 

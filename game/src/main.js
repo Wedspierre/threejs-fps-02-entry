@@ -6,8 +6,7 @@ import { PALETTE } from './palette.js';
 import { createWorld, SITES, ATTACKER_SPAWNS, DEFENDER_SPAWNS } from './world.js';
 import { createInput } from './input.js';
 import { createPlayer } from './player.js';
-import { createWeaponView, WEAPONS, GRENADE_PRICE } from './weapons.js';
-import { createGrenades } from './weapons.js';
+import { createWeaponView, WEAPONS, GRENADE_PRICE, createGrenades } from './weapons.js';
 import { createBots, stepBots, resetBot, killBot } from './bots.js';
 import {
   createMatch, startMatch, startRound, beginLive, roundOutcome, endRound, nextRound,
@@ -38,11 +37,13 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 document.getElementById('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(PALETTE.canvas);
-scene.fog = new THREE.Fog(new THREE.Color(PALETTE.canvas), 24, 72);
+scene.fog = new THREE.Fog(new THREE.Color(PALETTE.canvas), 28, 95);
 const camera = new THREE.PerspectiveCamera(74, window.innerWidth / window.innerHeight, 0.05, 160);
 scene.add(camera);
 
@@ -159,12 +160,15 @@ const tmpB = new THREE.Vector3();
 const tmpC = new THREE.Vector3();
 const tmpDir = new THREE.Vector3();
 
+// Reused across shots: the raycast list is rebuilt, never reallocated.
+const shootableList = [];
 function shootables() {
-  const list = world.shootables.slice();
+  shootableList.length = 0;
+  shootableList.push(...world.shootables);
   for (const fighter of fighters) {
-    if (fighter.kind === 'bot' && fighter.alive) list.push(...fighter.hitMeshes);
+    if (fighter.kind === 'bot' && fighter.alive) shootableList.push(...fighter.hitMeshes);
   }
-  return list;
+  return shootableList;
 }
 
 function hasLineOfSight(from, to) {
@@ -654,6 +658,8 @@ function settle(steps) {
 function runShot(name) {
   hud.hideOverlay();
   hud.hideBuy();
+  hud.hideMessage();
+  hud.hideBanner();
   if (name === 'start') {
     resetPositions();
     body.position.set(0, 0, 14);
@@ -673,7 +679,15 @@ function runShot(name) {
     body.yaw = 0.25;
     body.pitch = 0;
     settle(170);
-    // Aim at the nearest living enemy and fire twice.
+    // Stage the fight: one enemy in the open lane ahead, an ally on the right
+    // edge, so the frame shows a firefight instead of an empty corridor.
+    const staged = bots.find((b) => b.team === 'ashen' && b.alive);
+    if (staged) staged.mover.teleport(-6, -2, Math.PI * 0.9);
+    const ally = bots.find((b) => b.team === 'ember' && b.alive);
+    if (ally) ally.mover.teleport(0.5, 1.5, -0.4);
+    // Aim at the nearest living enemy and fire three times, two fixed steps
+    // apart: the last tracer and muzzle flash are still lit when the frame
+    // is captured.
     let best = null;
     let bestD = Infinity;
     for (const bot of bots) {
@@ -688,21 +702,25 @@ function runShot(name) {
       tmpA.set(best.mover.state.position.x, 1.3, best.mover.state.position.z);
       aimAt(tmpA);
       playerShoot();
-      settle(8);
+      settle(2);
       playerShoot();
+      settle(2);
+      playerShoot();
+      settle(2);
     }
-    settle(10);
+    settle(2);
   } else if (name === 'plant') {
     match.bomb.state = 'planted';
     match.bomb.site = 'A';
     match.bomb.x = SITES.A.x;
     match.bomb.z = SITES.A.z;
     match.bomb.timer = 28;
-    // West lane down to Site A: a clear sightline past the containers.
+    // West lane down to Site A: a clear sightline past the containers. The
+    // defender stands in the open lane, clear of the teal container's footprint.
     body.position.set(-17, 0, -3.5);
     settle(90);
     const enemy = bots.find((b) => b.team === 'ashen' && b.alive);
-    if (enemy) enemy.mover.teleport(-14.5, -8, Math.PI * 0.75);
+    if (enemy) enemy.mover.teleport(-15.5, -7, Math.PI * 0.75);
     tmpA.set(SITES.A.x, 1.2, SITES.A.z);
     aimAt(tmpA);
     settle(6);

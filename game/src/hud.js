@@ -130,6 +130,10 @@ export function createHud(world) {
         message.hidden = true;
       }, ms);
     },
+    hideMessage() {
+      clearTimeout(messageTimer);
+      message.hidden = true;
+    },
     showBanner(text, ms = 3400) {
       banner.textContent = text;
       banner.hidden = false;
@@ -137,6 +141,10 @@ export function createHud(world) {
       bannerTimer = setTimeout(() => {
         banner.hidden = true;
       }, ms);
+    },
+    hideBanner() {
+      clearTimeout(bannerTimer);
+      banner.hidden = true;
     },
     showPlant(label, progress) {
       plantBar.hidden = false;

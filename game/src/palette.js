@@ -1,13 +1,13 @@
-// The look plan, in one place. Six values and one accent hue; the lighting makes every
-// shade the game needs, so no other colour appears in the code. The same names are the
-// CSS custom properties in index.html. Emberline's palette is a dusk foundry: warm amber
-// against cold steel and rust.
+// The look plan, in one place. The lighting makes every shade the game needs, so no
+// other colour appears in the code. The same names are the CSS custom properties in
+// index.html. Emberline's palette is a dusk foundry: warm amber against cold steel and
+// rust — kept light enough that the yard reads at a glance instead of sinking to black.
 export const PALETTE = {
-  canvas: '#17130f',
-  surface: '#23201c',
-  hairline: '#3a332b',
+  canvas: '#241c14',
+  surface: '#3d332a',
+  hairline: '#5b4c3c',
   ink: '#efe8da',
-  muted: '#9a8f80',
+  muted: '#b3a48f',
   accent: '#e8a33d',
   rust: '#b4552d',
   teal: '#3fb8a6',

@@ -174,6 +174,9 @@ export function createWeaponView(camera) {
 
 // Grenades: one live projectile at a time per thrower, a sphere that bounces off the
 // world's boxes, fuses after 1.5 s and hurts everything in a 6 m radius, harder close in.
+// The step reuses one scratch vector; nothing is allocated per frame.
+const grenadeNext = new THREE.Vector3();
+
 export function createGrenades(scene, colliders) {
   const live = [];
   const meshGeo = new THREE.SphereGeometry(0.09, 10, 8);
@@ -198,7 +201,7 @@ export function createGrenades(scene, colliders) {
       const g = live[i];
       g.fuse -= dt;
       g.velocity.y -= 18 * dt;
-      const next = g.mesh.position.clone().addScaledVector(g.velocity, dt);
+      const next = grenadeNext.copy(g.mesh.position).addScaledVector(g.velocity, dt);
       probe.min.set(next.x - 0.09, next.y - 0.09, next.z - 0.09);
       probe.max.set(next.x + 0.09, next.y + 0.09, next.z + 0.09);
       let hit = null;
