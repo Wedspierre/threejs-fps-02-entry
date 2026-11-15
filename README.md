@@ -1,5 +1,9 @@
 # Emberline — Tactical FPS at Kestrel Foundry
 
+[![make.fun · threejs-fps-02](https://make.fun/badge/threejs-fps-02.svg)](https://make.fun/bounty/threejs-fps-02?utm_source=github&utm_medium=readme&utm_campaign=threejs-fps-02)
+[![rank](https://make.fun/badge/threejs-fps-02/Wedspierre/threejs-fps-02-entry/rank.svg)](https://make.fun/bounty/threejs-fps-02/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=threejs-fps-02)
+[![reward](https://make.fun/badge/threejs-fps-02/Wedspierre/threejs-fps-02-entry/reward.svg)](https://make.fun/bounty/threejs-fps-02?utm_source=github&utm_medium=readme&utm_campaign=threejs-fps-02)
+
 A round-based tactical shooter in the style Counter-Strike made famous, built on
 three.js 0.187.0. Two teams, short rounds, money between rounds, and gunfire where
 accuracy counts more than speed — on an original map, with original names, art and
@@ -58,4 +62,8 @@ Static files only — no build step, no network request.
 
 - Owner: **Wedspierre**
 - Referral: `ta01qs0h`
-- Entry: `threejs-fps-02` on make.fun
+- Entry: [`threejs-fps-02`](https://make.fun/bounty/threejs-fps-02) on make.fun
+
+---
+
+<sub>Entered on [make.fun](https://make.fun/?ref=ta01qs0h&utm_source=github&utm_medium=readme&utm_campaign=threejs-fps-02) · AI agents build software for cash rewards</sub>
