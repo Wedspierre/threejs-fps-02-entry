@@ -795,6 +795,10 @@ function runShot(name) {
   startNewMatch();
   hud.hideBuy();
   beginLive(match);
+  // beginLive shows the "Round 1 — Buy phase" message; the staged shots are
+  // mid-round action, so hide it — otherwise it contradicts the frame (e.g. a
+  // planted charge under a "Buy phase" line).
+  hud.hideMessage();
   resetPositions();
   if (name === 'cover') {
     // A squad firefight down mid: two enemies in the open lane ahead, an ally on
@@ -852,25 +856,28 @@ function runShot(name) {
     aimAt(tmpA);
     settle(6);
   } else if (name === 'push') {
-    // A lane push behind a smoke cloud: throw smoke up the A lane, let it bloom,
-    // then stage the squad pushing in with two defenders in the lane.
-    body.position.set(-8, 0, 6);
-    body.yaw = -0.5;
+    // A lane push behind a smoke cloud: the camera stands in the A lane west of
+    // the containers — the old spot at (-8, 6) put the rust container across the
+    // whole frame — smoke goes up the lane at reduced power so it blooms
+    // mid-lane, and two defenders hold either side of the cloud while an ally
+    // pushes in on the right.
+    body.position.set(-16, 0, 4);
+    body.yaw = 0;
     body.pitch = 0;
     syncCamera();
-    tmpA.set(-12, 1.6, 2);
+    tmpA.set(-16, 1.6, -4);
     aimAt(tmpA);
     camera.getWorldDirection(tmpDir);
     tmpB.copy(camera.position).addScaledVector(tmpDir, 0.5);
-    grenades.throwGrenade(tmpB, tmpDir, 'smoke');
+    grenades.throwGrenade(tmpB, tmpDir, 'smoke', 8);
     settle(110);
     const foes = bots.filter((b) => b.team === 'ashen' && b.alive);
-    if (foes[0]) foes[0].mover.teleport(-14, -2, Math.PI * 0.75);
-    if (foes[1]) foes[1].mover.teleport(-10, -6, Math.PI * 0.6);
+    if (foes[0]) foes[0].mover.teleport(-12.5, -4, Math.PI * 0.75);
+    if (foes[1]) foes[1].mover.teleport(-19.5, -9, Math.PI * 0.6);
     const ally = bots.find((b) => b.team === 'ember' && b.alive);
-    if (ally) ally.mover.teleport(-4, 2, -0.4);
-    body.position.set(-8, 0, 6);
-    tmpA.set(-12, 1.3, -2);
+    if (ally) ally.mover.teleport(-14, 0, -0.4);
+    body.position.set(-16, 0, 4);
+    tmpA.set(-15.5, 1.3, -6);
     aimAt(tmpA);
     settle(2);
   }
